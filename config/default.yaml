@@ -1,0 +1,62 @@
+# Typeface Killer Default Configuration
+
+# Word Detection Settings
+word_detection:
+  min_confidence: 0.8
+  languages: ["fr", "it", "de"]  # Languages for EasyOCR
+  # Size filtering parameters
+  min_height: 70  # Minimum word height in pixels
+  min_width: 70  # Minimum word width in pixels
+  ocr_params:
+    slope_ths: 1.0
+    paragraph: false
+    height_ths: 0.0
+    width_ths: 0.0
+    ycenter_ths: 0.0
+    decoder: "beamsearch"
+    rotation_info: [0, 90, 270]
+    batch_size: 2
+    workers: 2
+
+# Letter Detection Settings
+letter_detection:
+  # Tesseract settings for region detection
+  tesseract:
+    tessdata_path: "/usr/share/tesseract-ocr/4.00/tessdata"
+    languages: "fra+deu+ita+eng"
+    psm: 6  # PSM.SINGLE_BLOCK
+    oem: 1  # OEM.LSTM_ONLY
+    min_region_size: 1225  # 35^2
+    large_region_threshold: 4900  # 70^2
+    small_region_padding: 3
+    large_region_padding: 6
+  
+  # EasyOCR settings for letter identification
+  easyocr:
+    min_confidence: 0.5
+    decoder: "beamsearch"
+    allowlist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿœŒÄäÖöÜüßÀàÂâÆæÇçÉéÈèÊêËëÎîÏïÔôŒœÙùÛûÜüŸÿ"
+
+# Letter Segmentation Settings
+letter_segmentation:
+  model_type: "vit_h"  # vit_h, vit_l, vit_b
+  checkpoint: "checkpoints/sam_vit_h_4b8939.pth"  # Path to model checkpoint
+  device: "cuda"  # cuda or cpu
+  patch_mode: true  # Use sliding window for large images
+  input_size: 1024  # Input image size
+
+# Vectorization Settings
+vectorization:
+  turdsize: 2
+  alphamax: 1.0
+  opttolerance: 0.05  # Optimization tolerance for Potrace
+  unit: 10
+  resolution: 600
+  output:
+    path: "data/output/vectors"  # Directory to save SVG files
+
+# Output Settings
+output:
+  save_intermediate: true
+  save_visualizations: true
+  format: "json"  # or "csv" 
