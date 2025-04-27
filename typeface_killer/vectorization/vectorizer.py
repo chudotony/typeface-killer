@@ -15,50 +15,70 @@ class Vectorizer:
     Converts letter images to SVG paths using Potrace.
     """
     
-    def __init__(self, config: Dict):
+    def __init__(self, config: Dict, output_dir: Optional[str] = None):
         """
         Initialize the vectorizer.
         
         Args:
             config: Configuration dictionary containing vectorization settings
+            output_dir: Optional output directory to save SVGs
         """
         self.config = config
-        self.output_dir = Path(config["output"]["path"])
+        if output_dir is not None:
+            self.output_dir = Path(output_dir)
+        elif "output" in config and "path" in config["output"]:
+            self.output_dir = Path(config["output"]["path"])
+        else:
+            raise ValueError("Output directory must be provided either as an argument or in the config under ['output']['path']")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         # Load Potrace parameters
         self.opttolerance = config["vectorization"]["opttolerance"]
     
-    def vectorize_letter(self, image: np.ndarray, output_path: Optional[str] = None) -> str:
+    def vectorize_letter(self, letter: Dict) -> str:
         """
         Convert a letter image to an SVG path.
         
         Args:
-            image: Letter image as numpy array
-            output_path: Optional path to save the SVG file. If None, a unique name will be generated.
+            letter: Dictionary containing letter information including position and image data
             
         Returns:
             Path to the generated SVG file
         """
-        # Convert image to grayscale and invert
-        if len(image.shape) == 3:
-            image = np.mean(image, axis=2)
-        image = 255 - image
+        # Extract position coordinates
+        x, y = letter["position"]["x"], letter["position"]["y"]
+        w, h = letter["position"]["width"], letter["position"]["height"]
         
-        # Create bitmap
-        bitmap = potrace.Bitmap(image)
+        # Get the image data
+        if "image" in letter:
+            image = letter["image"]
+        else:
+            # If no image data, try to load from the original image path
+            image_path = letter.get("image_path")
+            if not image_path:
+                raise ValueError("No image data or path provided for letter")
+            image = Image.open(image_path)
         
-        # Trace the bitmap
+        # Crop the letter region
+        crop = image.crop((x, y, x+w, y+h))
+        
+        # Convert to numpy array and invert
+        crop_array = np.asarray(crop)
+        if len(crop_array.shape) == 3:  # If RGB, convert to grayscale
+            crop_array = np.mean(crop_array, axis=2)
+        crop_array = 255 - crop_array  # Invert the image
+        
+        # Create bitmap and trace
+        bitmap = potrace.Bitmap(crop_array)
         path = bitmap.trace(opttolerance=self.opttolerance)
         
-        # Generate output path if not provided
-        if output_path is None:
-            output_path = self._generate_output_path()
+        # Generate output path
+        output_path = self._generate_output_path()
         
         # Write SVG file
         with open(output_path, "w") as f:
             # Write SVG header
-            f.write(f'<svg viewBox="0 0 {image.shape[1]} {image.shape[0]}">')
+            f.write(f'<svg viewBox="0 0 {w} {h}">')
             
             # Create a combined path with proper winding
             f.write('<path d="')

@@ -25,7 +25,7 @@ This project implements a pipeline for analyzing typographic features in images.
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/typeface-killer.git
+git clone https://github.com/chudotony/typeface-killer.git
 cd typeface-killer
 ```
 
