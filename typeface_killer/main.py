@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, List
 
 import cv2
+import numpy as np
 
 from typeface_killer.word_detection import WordDetector
 from typeface_killer.letter_detection import LetterDetector
@@ -19,6 +20,13 @@ from typeface_killer.vectorization import Vectorizer
 from typeface_killer.utils.config import load_config
 from typeface_killer.utils.logging import setup_logging
 from typeface_killer.utils.image import filter_by_size
+
+# Import save_binary_mask from Hi-SAM
+import sys
+hi_sam_path = os.path.join(os.path.dirname(__file__), "letter_segmentation", "Hi-SAM")
+if hi_sam_path not in sys.path:
+    sys.path.insert(0, hi_sam_path)
+from demo_hisam import save_binary_mask
 
 def setup_argparse() -> argparse.ArgumentParser:
     """Set up command line argument parsing."""
@@ -105,21 +113,58 @@ def detect_letters_for_all_words(all_words: Dict[str, List[Dict]], config: Dict,
     del letter_detector
     return all_letters
 
-def segment_letters_for_all_images(all_letters: Dict[str, List[Dict]], config: Dict) -> Dict[str, List[Dict]]:
-    """Segment all letters using Hi-SAM."""
-    letter_segmenter = LetterSegmenter(config)
-    all_segmented = {}
+def segment_letters_for_all_images(all_letters: Dict[str, List[Dict]], config: Dict, output_dir: str) -> Dict[str, List[Dict]]:
+    """Segment all words using Hi-SAM."""
+    # Create words_segmented directory in output
+    segments_dir = Path(output_dir) / "words_segmented"
+    segments_dir.mkdir(parents=True, exist_ok=True)
     
-    for image_path, letters in all_letters.items():
-        segmented_letters = []
-        for letter in letters:
-            segmented = letter_segmenter.segment_letter(letter)
-            segmented_letters.append(segmented)
-        all_segmented[image_path] = segmented_letters
+    # Debug logging
+    logging.info(f"Created segments directory at: {segments_dir}")
+    logging.info(f"Directory exists: {segments_dir.exists()}")
+    logging.info(f"Directory is writable: {os.access(segments_dir, os.W_OK)}")
+    
+    # Initialize letter segmenter with config and output directory
+    letter_segmenter = LetterSegmenter(config=config, output_dir=str(segments_dir))
+    
+    # Get words directory path
+    words_dir = Path(output_dir) / "words"
+    logging.info(f"Looking for word images in: {words_dir}")
+    logging.info(f"Word directory exists: {words_dir.exists()}")
+    
+    for image_path in all_letters:
+        # Get all word images for this image
+        word_files = sorted(words_dir.glob(f"{Path(image_path).stem}_*.png"))
+        logging.info(f"Found {len(word_files)} word images for {image_path}")
+        
+        # Process each word
+        for word_path in word_files:
+            logging.info(f"Processing word image: {word_path}")
+            
+            # Read the word image
+            word_image = cv2.imread(str(word_path))
+            if word_image is None:
+                logging.error(f"Could not read word image: {word_path}")
+                continue
+            
+            # Segment the entire word
+            segmented_mask = letter_segmenter.segment_letters(word_image)
+            if segmented_mask is None:
+                logging.error(f"Failed to segment word: {word_path}")
+                continue
+            
+            # Save the segmented word mask using save_binary_mask
+            segment_path = str(segments_dir / word_path.name)
+            try:
+                save_binary_mask(segmented_mask, segment_path)
+                logging.info(f"Saved segmented mask to: {segment_path}")
+            except Exception as e:
+                logging.error(f"Error saving mask to {segment_path}: {str(e)}")
+                continue
     
     # Clean up Hi-SAM
     del letter_segmenter
-    return all_segmented
+    return all_letters
 
 def vectorize_all_letters(all_segmented: Dict[str, List[Dict]], output_dir: str, config: Dict) -> Dict[str, Dict]:
     """Vectorize all segmented letters."""
@@ -199,7 +244,7 @@ def process_dataset(dataset_path: str, output_dir: str, config: Dict) -> Dict:
     del all_words  # Free memory
     
     logging.info("Stage 3: Letter segmentation")
-    all_segmented = segment_letters_for_all_images(all_letters, config)
+    all_segmented = segment_letters_for_all_images(all_letters, config, output_dir)
     del all_letters  # Free memory
     
     logging.info("Stage 4: Vectorization")

@@ -40,7 +40,6 @@ letter_detection:
 # Letter Segmentation Settings
 letter_segmentation:
   model_type: "vit_h"  # vit_h, vit_l, vit_b
-  checkpoint: "checkpoints/sam_vit_h_4b8939.pth"  # Path to model checkpoint
   device: "cuda"  # cuda or cpu
   patch_mode: true  # Use sliding window for large images
   input_size: 1024  # Input image size

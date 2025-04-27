@@ -25,17 +25,13 @@ This project implements a pipeline for analyzing typographic features in images.
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/chudotony/typeface-killer.git
+git clone https://github.com/yourusername/typeface-killer.git
 cd typeface-killer
 ```
 
-2. Clone the Hi-SAM repository for letter segmentation:
+2. Clone the Hi-SAM repository into the correct directory:
 ```bash
-cd typeface_killer/letter_segmentation
-git clone https://github.com/ymy-k/Hi-SAM.git
-cd Hi-SAM
-pip install -r requirements.txt
-cd ../../
+git clone https://github.com/yourusername/Hi-SAM.git typeface_killer/letter_segmentation/Hi-SAM
 ```
 
 3. Install dependencies:
@@ -46,16 +42,18 @@ pip install -r requirements.txt
 4. Install Tesseract OCR:
 - On macOS: `brew install tesseract`
 - On Ubuntu: `sudo apt-get install tesseract-ocr`
-- On Windows: Download and install from [Tesseract GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
+- On Windows: Download and install from [GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
 
 You should also install languages for tesseract, we used `tesseract-ocr-deu tesseract-ocr-eng tesseract-ocr-ita tesseract-ocr-fra` for Ubuntu
 
 5. Download required models:
-```bash
-# Download Hi-SAM model
-mkdir -p checkpoints
-wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth -O checkpoints/sam_vit_h_4b8939.pth
-```
+- Create a `pretrained_checkpoint` directory in the project root:
+  ```bash
+  mkdir -p pretrained_checkpoint
+  ```
+- Download and place the following checkpoints in the `pretrained_checkpoint` directory:
+  - Hi-SAM checkpoint: `sam_tss_h_textseg.pth`
+  - SAM checkpoint: `sam_vit_h_4b8939.pth`
 
 ## Project Structure
 
@@ -171,4 +169,9 @@ letter_segmentation:
   device: "cuda"  # Processing device
   patch_mode: true  # Use sliding window for large images
   input_size: 1024  # Input image size
+```
+
+## Usage
+
+Run the pipeline with:
 ```
