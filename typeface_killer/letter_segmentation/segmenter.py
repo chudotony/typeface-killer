@@ -4,6 +4,7 @@ Letter segmentation implementation using Hi-SAM.
 
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -12,8 +13,19 @@ import numpy as np
 import torch
 from PIL import Image
 
-from demo_hisam import model_registry, SamPredictor
-from demo_hisam.utils import patchify_sliding, unpatchify_sliding
+# Add Hi-SAM directory to Python path
+hi_sam_path = os.path.join(os.path.dirname(__file__), "Hi-SAM")
+if hi_sam_path not in sys.path:
+    sys.path.insert(0, hi_sam_path)
+
+try:
+    # Import all from demo_hisam.py
+    from demo_hisam import *
+except ImportError as e:
+    logging.error(f"Failed to import Hi-SAM modules: {str(e)}")
+    logging.error(f"Hi-SAM path: {hi_sam_path}")
+    logging.error(f"Current sys.path: {sys.path}")
+    raise
 
 class LetterSegmenter:
     """

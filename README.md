@@ -25,21 +25,32 @@ This project implements a pipeline for analyzing typographic features in images.
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/chudotony/typo-killer.git
-cd typo-killer
+git clone https://github.com/chudotony/typeface-killer.git
+cd typeface-killer
 ```
 
-2. Install dependencies:
+2. Clone the Hi-SAM repository for letter segmentation:
+```bash
+cd typeface_killer/letter_segmentation
+git clone https://github.com/ymy-k/Hi-SAM.git
+cd Hi-SAM
+pip install -r requirements.txt
+cd ../../
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Install Tesseract OCR:
+4. Install Tesseract OCR:
 - On macOS: `brew install tesseract`
 - On Ubuntu: `sudo apt-get install tesseract-ocr`
 - On Windows: Download and install from [Tesseract GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
 
-4. Download required models:
+You should also install languages for tesseract, we used `tesseract-ocr-deu tesseract-ocr-eng tesseract-ocr-ita tesseract-ocr-fra` for Ubuntu
+
+5. Download required models:
 ```bash
 # Download Hi-SAM model
 mkdir -p checkpoints
@@ -161,31 +172,3 @@ letter_segmentation:
   patch_mode: true  # Use sliding window for large images
   input_size: 1024  # Input image size
 ```
-
-## Usage
-
-1. Prepare your dataset JSON file with source information
-2. Place your input images in the `data/input` directory
-3. Configure the system in `config/default.yaml`
-4. Run the pipeline:
-```bash
-python main.py --dataset path/to/dataset.json --input data/input --output data/output
-```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-Note: This project integrates several third-party components, each with their own licenses:
-- EasyOCR: Apache License 2.0
-- Hi-SAM: Apache License 2.0
-- Tesseract OCR: Apache License 2.0
-- Potrace: GNU General Public License
-
-Please refer to the respective license files of these components for their specific terms and conditions.
-
-## Acknowledgments
-
-- EasyOCR for word and letter detection
-- Hi-SAM for letter segmentation
-- Tesseract OCR for letter detection
