@@ -96,6 +96,8 @@ def detect_letters_for_all_words(all_words: Dict[str, List[Dict]], config: Dict,
     
     for image_path, words in all_words.items():
         image_letters = []
+        logging.info(f"Processing image {image_path} with {len(words)} words")
+        
         for word_idx, word in enumerate(words):
             # Read the word image from file
             word_filename = f"{Path(image_path).stem}_{word_idx:04d}.png"
@@ -106,17 +108,41 @@ def detect_letters_for_all_words(all_words: Dict[str, List[Dict]], config: Dict,
                 logging.error(f"Could not read word image: {word_path}")
                 continue
                 
+            # Validate word image
+            if word_image.size == 0:
+                logging.error(f"Empty word image: {word_path}")
+                continue
+                
             # Detect letters in the word image
             letters = letter_detector.detect_letters(word_image)
-            # Add word index to each letter
+            if not letters:
+                logging.warning(f"No letters detected in word {word_path}")
+                continue
+                
+            # Add word index and validate each letter
+            valid_letters = []
             for letter in letters:
+                # Validate bbox
+                bbox = letter.get("bbox", {})
+                if not all(k in bbox for k in ["x", "y", "w", "h"]):
+                    logging.warning(f"Invalid bbox in letter from {word_path}")
+                    continue
+                    
+                # Validate character
+                if not letter.get("char"):
+                    logging.warning(f"Empty character in letter from {word_path}")
+                    continue
+                    
                 letter["word_idx"] = word_idx
                 letter["word_path"] = word_path
-            image_letters.extend(letters)
-            logging.info(f"Detected {len(letters)} letters in word {word_path}")
+                valid_letters.append(letter)
+                logging.debug(f"Detected letter '{letter['char']}' at {bbox} in {word_path}")
+            
+            image_letters.extend(valid_letters)
+            logging.info(f"Detected {len(valid_letters)} valid letters in word {word_path}")
         
         all_letters[image_path] = image_letters
-        logging.info(f"Total letters for image {image_path}: {len(image_letters)}")
+        logging.info(f"Total valid letters for image {image_path}: {len(image_letters)}")
     
     # Clean up Tesseract
     del letter_detector
@@ -146,11 +172,21 @@ def segment_letters_for_all_images(all_letters: Dict[str, List[Dict]], config: D
                 logging.error(f"Could not read word image: {word_path}")
                 continue
             
+            # Validate word image
+            if word_image.size == 0:
+                logging.error(f"Empty word image: {word_path}")
+                continue
+                
             segmented_mask = letter_segmenter.segment_letters(word_image)
             if segmented_mask is None:
                 logging.error(f"Failed to segment word: {word_path}")
                 continue
-            
+                
+            # Validate segmented mask
+            if segmented_mask.size == 0:
+                logging.error(f"Empty segmented mask for word: {word_path}")
+                continue
+                
             # Save the segmented word
             segment_path = str(segments_dir / Path(word_path).name)
             try:
@@ -164,99 +200,116 @@ def segment_letters_for_all_images(all_letters: Dict[str, List[Dict]], config: D
     del letter_segmenter
     return all_letters  # Return original letters with bboxes
 
-def vectorize_all_letters(all_letters: Dict[str, List[Dict]], output_dir: str, config: Dict) -> Dict[str, Dict]:
-    """Vectorize all segmented letters."""
-    results = {}
+def vectorize_all_letters(all_letters: Dict[str, List[Dict]], output_dir: Path, config: Dict) -> Dict[str, List[Dict]]:
+    """
+    Vectorize all segmented letters.
     
-    # Create vectors directory
-    vectors_dir = Path(output_dir) / "vectors"
-    vectors_dir.mkdir(parents=True, exist_ok=True)
+    Args:
+        all_letters: Dictionary mapping image paths to lists of letter dictionaries
+        output_dir: Directory to save vectorized letters
+        config: Configuration dictionary
+        
+    Returns:
+        Dictionary mapping image paths to lists of vectorized letter dictionaries
+    """
+    logging.info("Starting letter vectorization...")
+    vectors_dir = output_dir / "vectors"
+    vectors_dir.mkdir(exist_ok=True)
     
-    # Get segments directory
-    segments_dir = Path(output_dir) / "words_segmented"
+    vectorizer = Vectorizer(output_dir=vectors_dir, config=config)
+    vectorized_letters = {}
     
+    # Group letters by their word path
+    word_letters = {}
     for image_path, letters in all_letters.items():
-        logging.info(f"Vectorizing {len(letters)} letters for image {image_path}")
-        image_results = []
-        for idx, letter in enumerate(letters):
-            # Get the segmented word image
-            word_path = letter["word_path"]
-            segment_path = str(segments_dir / Path(word_path).name)
-            
-            try:
-                word_image = Image.open(segment_path).convert('L')
-            except Exception as e:
-                logging.error(f"Could not read segmented word: {segment_path}")
-                continue
-            
-            # Get letter bbox
-            bbox = letter["bbox"]
-            x, y = bbox["x"], bbox["y"]
-            w, h = bbox["w"], bbox["h"]
-            
-            # Validate bbox
-            if x < 0 or y < 0 or x + w > word_image.width or y + h > word_image.height:
-                logging.warning(f"Invalid bbox for letter {idx} in {word_path}: {bbox}")
-                continue
-            
-            # Crop the letter region
-            crop = word_image.crop((x, y, x+w, y+h))
-            
-            # Check if crop is empty
-            crop_array = np.asarray(crop)
-            if np.all(crop_array == 0):
-                logging.warning(f"Empty crop for letter {idx} in {word_path}")
-                continue
-            
-            # Convert to numpy array and invert
-            crop_array = 255 - crop_array  # Invert the image
-            
-            # Create bitmap and trace
-            bitmap = potrace.Bitmap(crop_array)
-            path = bitmap.trace(opttolerance=config["vectorization"]["opttolerance"])
-            
-            # Generate SVG path
-            svg_filename = f"{Path(image_path).stem}_{idx:04d}.svg"
-            svg_path = str(vectors_dir / svg_filename)
-            
-            # Write SVG file
-            with open(svg_path, "w") as f:
-                f.write(f'<svg viewBox="0 0 {w} {h}">')
-                f.write('<path d="')
-                
-                for curve in path:
-                    f.write('M {},{}'.format(curve.start_point.x, curve.start_point.y))
-                    for segment in curve:
-                        if segment.is_corner:
-                            f.write(f' L {segment.c.x},{segment.c.y} L {segment.end_point.x},{segment.end_point.y}')
-                        else:
-                            f.write(f' C {segment.c1.x},{segment.c1.y} {segment.c2.x},{segment.c2.y} {segment.end_point.x},{segment.end_point.y}')
-                    f.write(' Z ')
-                
-                f.write('" fill-rule="evenodd" />')
-                f.write("</svg>")
-            
-            # Store letter information
-            image_results.append({
-                "char": letter.get("char", ""),
-                "bbox": bbox,
-                "svg_path": svg_path
-            })
-            logging.info(f"Vectorized letter {idx} for {word_path}")
-        
-        # Get the original metadata from the dataset
-        with open(config["dataset_path"], 'r') as f:
-            dataset = json.load(f)
-            original_filename = Path(image_path).name
-            source_info = dataset[original_filename].get("source", {})
-        
-        results[image_path] = {
-            "letters": image_results,
-            "source": source_info
-        }
-        logging.info(f"Completed vectorization for {image_path}: {len(image_results)} letters")
+        for letter in letters:
+            if "word_path" in letter:
+                word_filename = Path(letter["word_path"]).name
+                if word_filename not in word_letters:
+                    word_letters[word_filename] = []
+                word_letters[word_filename].append(letter)
     
-    return results
+    # Process each word's letters
+    for word_filename, letters in word_letters.items():
+        if not letters:
+            logging.warning(f"No letters found for word {word_filename}")
+            continue
+            
+        logging.info(f"Processing {len(letters)} letters from word {word_filename}")
+        image_letters = []
+        
+        # Get the segmented word path
+        word_path = output_dir / "words_segmented" / word_filename
+        if not word_path.exists():
+            logging.warning(f"Segmented word image not found: {word_path}")
+            continue
+            
+        try:
+            word_image = Image.open(word_path).convert('L')
+        except Exception as e:
+            logging.error(f"Failed to load segmented word image {word_path}: {str(e)}")
+            continue
+        
+        for idx, letter in enumerate(letters):
+            try:
+                # Get bbox and validate
+                bbox = letter["bbox"]
+                if not isinstance(bbox, dict):
+                    logging.warning(f"Invalid bbox format: {bbox}")
+                    continue
+                    
+                # Convert bbox to tuple format (x, y, w, h)
+                x, y = bbox["x"], bbox["y"]
+                w, h = bbox["w"], bbox["h"]
+                
+                # Validate bbox values
+                if not all(isinstance(v, (int, float)) for v in [x, y, w, h]):
+                    logging.warning(f"Invalid bbox values: {bbox}")
+                    continue
+                    
+                # Crop letter region
+                try:
+                    letter_image = word_image.crop((x, y, x + w, y + h))
+                except Exception as e:
+                    logging.warning(f"Failed to crop letter: {str(e)}")
+                    continue
+                    
+                if letter_image.size[0] == 0 or letter_image.size[1] == 0:
+                    logging.warning(f"Empty crop for letter: {letter['char']}")
+                    continue
+                    
+                # Generate output filename
+                image_name = Path(letter["word_path"]).stem
+                output_filename = f"{image_name}_{idx:04d}.svg"
+                
+                # Vectorize letter
+                svg_path = vectorizer.vectorize_letter(letter_image, output_filename)
+                if svg_path is None:
+                    logging.warning(f"Failed to vectorize letter: {letter['char']}")
+                    continue
+                    
+                # Add vectorized letter to results
+                vectorized_letter = {
+                    "char": letter["char"],
+                    "bbox": {"x": x, "y": y, "w": w, "h": h},
+                    "svg_path": output_filename  # Store relative path
+                }
+                image_letters.append(vectorized_letter)
+                logging.info(f"Vectorized letter: {letter['char']}")
+                
+            except Exception as e:
+                logging.error(f"Error processing letter: {str(e)}")
+                continue
+                
+        if image_letters:
+            # Store letters under their original image path
+            image_path = Path(letters[0].get("word_path", "")).name
+            original_image_path = Path(image_path).stem[:-5] + Path(image_path).suffix
+            if original_image_path not in vectorized_letters:
+                vectorized_letters[original_image_path] = []
+            vectorized_letters[original_image_path].extend(image_letters)
+            logging.info(f"Vectorized {len(image_letters)} letters for word {word_filename}")
+    return vectorized_letters
 
 def process_dataset(dataset_path: str, output_dir: str, config: Dict) -> Dict:
     """
@@ -268,7 +321,7 @@ def process_dataset(dataset_path: str, output_dir: str, config: Dict) -> Dict:
         config: Configuration dictionary
     
     Returns:
-        Dictionary containing processed data for all images
+        Dictionary containing the original dataset enriched with letter information
     """
     # Load dataset
     with open(dataset_path, 'r') as f:
@@ -298,9 +351,25 @@ def process_dataset(dataset_path: str, output_dir: str, config: Dict) -> Dict:
     all_letters = segment_letters_for_all_images(all_letters, config, output_dir)
     
     logging.info("Stage 4: Vectorization")
-    results = vectorize_all_letters(all_letters, output_dir, config)
+    vectorized_letters = vectorize_all_letters(all_letters, output_path, config)
     
-    return results
+    # Enrich the original dataset with letter information
+    logging.info(f"Dataset keys: {list(dataset.keys())}")
+    for image_path, letters in vectorized_letters.items():
+        # Get the base image name without the word index
+        base_name = Path(image_path).stem[:-5]  # Remove the _XXXX suffix
+        
+        # Find the matching key in dataset to get the correct suffix
+        matching_key = next((key for key in dataset.keys() if key.startswith(base_name)), None)
+        if matching_key:
+            image_name = matching_key
+            logging.info(f"Processing image: {image_name}")
+            dataset[image_name]["letters"] = letters
+            logging.info(f"Added {len(letters)} letters to {image_name}")
+        else:
+            logging.warning(f"No matching image found in dataset for {base_name}")
+    
+    return dataset
 
 def main():
     """Main entry point of the pipeline."""
@@ -316,7 +385,7 @@ def main():
     results = process_dataset(args.dataset, args.output, config)
     
     # Save results
-    output_path = Path(args.output) / "features.json"
+    output_path = Path(args.output) / "dataset.json"
     with open(output_path, "w") as f:
         json.dump(results, f, indent=2)
     

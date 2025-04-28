@@ -2,6 +2,6 @@
 Word detection module for the Typeface Killer pipeline.
 """
 
-from .detector import WordDetector
+from .word_detector import WordDetector
 
 __all__ = ['WordDetector'] 

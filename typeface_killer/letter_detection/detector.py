@@ -58,16 +58,7 @@ class LetterDetector:
             pil_img: PIL Image object
             
         Returns:
-            List of dictionaries containing region information:
-            {
-                'region': PIL.Image,  # cropped region
-                'bbox': {             # bounding box
-                    'x': int,
-                    'y': int,
-                    'w': int,
-                    'h': int
-                }
-            }
+            List of dictionaries containing region information
         """
         regions = []
         
@@ -85,33 +76,49 @@ class LetterDetector:
                 api.SetVariable("segment_nonalphabetic_script", "0")
                 
                 boxes = api.GetComponentImages(RIL.SYMBOL, True, True)
+                self.logger.info(f"Tesseract found {len(boxes)} potential regions")
                 
                 for i, (_, box, _, _) in enumerate(boxes):
                     if box is None:
+                        self.logger.debug(f"Region {i}: box is None")
                         continue
                     
                     x, y, w, h = box['x'], box['y'], box['w'], box['h']
+                    self.logger.debug(f"Region {i}: x={x}, y={y}, w={w}, h={h}")
                     
                     # Skip too small regions
                     if w * h < self.min_region_size:
+                        self.logger.debug(f"Region {i}: too small (size={w*h}, min={self.min_region_size})")
                         continue
                     
                     # Determine padding based on region size
                     gap = self.large_region_padding if w * h > self.large_region_threshold else self.small_region_padding
-                    
+                    bbox = {
+                        'x': x - gap,
+                        'y': y - gap,
+                        'w': w + gap * 2,
+                        'h': h + gap * 2
+                    }
+                    # Adjust bbox if it's outside the image
+                    img_w, img_h = pil_img.size
+                    if bbox['x']<0:
+                        bbox['x'] = 0
+                    if bbox['y']<0:
+                        bbox['y'] = 0
+                    if bbox['x']+bbox['w']>img_w:
+                        bbox['w'] = img_w-bbox['x']
+                    if bbox['y']+bbox['h']>img_h:
+                        bbox['h'] = img_h-bbox['y']
+
                     try:
                         # Crop region with padding
                         region = pil_img.crop((x-gap, y-gap, x+w+gap, y+h+gap))
                         
                         regions.append({
                             'region': region,
-                            'bbox': {
-                                'x': x - gap,
-                                'y': y - gap,
-                                'w': w + gap * 2,
-                                'h': h + gap * 2
-                            }
+                            'bbox': bbox
                         })
+                        self.logger.debug(f"Region {i}: added with padding {gap}")
                     
                     except Exception as e:
                         self.logger.warning(f"Failed to crop region {i}: {str(e)}")
@@ -121,6 +128,7 @@ class LetterDetector:
             self.logger.error(f"Failed to initialize Tesseract: {str(e)}")
             return []
         
+        self.logger.info(f"Detected {len(regions)} valid regions")
         return regions
     
     def _identify_letters(self, regions: List[Dict]) -> List[Dict]:
@@ -131,16 +139,7 @@ class LetterDetector:
             regions: List of region dictionaries from _detect_letter_regions
             
         Returns:
-            List of dictionaries containing letter information:
-            {
-                'char': str,           # detected character
-                'bbox': {              # bounding box
-                    'x': int,
-                    'y': int,
-                    'w': int,
-                    'h': int
-                }
-            }
+            List of dictionaries containing letter information
         """
         letters = []
         
@@ -155,20 +154,24 @@ class LetterDetector:
                     allowlist=self.allowed_letters,
                     decoder=self.decoder
                 )
+                self.logger.debug(f"Region {i}: EasyOCR found {len(result)} detections")
                 
                 for detection in result:
                     _, text, conf = detection
+                    self.logger.debug(f"Region {i}: detected '{text}' with confidence {conf}")
                     
                     if conf >= self.min_confidence and len(text) == 1:
                         letters.append({
                             'char': text,
                             'bbox': region_info['bbox']
                         })
+                        self.logger.debug(f"Region {i}: added letter '{text}'")
             
             except Exception as e:
                 self.logger.warning(f"Failed to identify letter in region {i}: {str(e)}")
                 continue
         
+        self.logger.info(f"Identified {len(letters)} letters")
         return letters
     
     def detect_letters(self, word_image: np.ndarray) -> List[Dict]:

@@ -31,7 +31,7 @@ cd typeface-killer
 
 2. Clone the Hi-SAM repository into the correct directory:
 ```bash
-git clone https://github.com/yourusername/Hi-SAM.git typeface_killer/letter_segmentation/Hi-SAM
+git clone https://github.com/ymy-k/Hi-SAM.git typeface_killer/letter_segmentation/Hi-SAM
 ```
 
 3. Install dependencies:
