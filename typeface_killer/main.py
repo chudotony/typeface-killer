@@ -21,7 +21,7 @@ from typeface_killer.letter_segmentation import LetterSegmenter
 from typeface_killer.vectorization import Vectorizer
 from typeface_killer.utils.config import load_config
 from typeface_killer.utils.logging import setup_logging
-from typeface_killer.utils.image import filter_by_size
+from typeface_killer.utils.image import filter_by_size, resize_if_large
 
 # Import save_binary_mask from Hi-SAM
 import sys
@@ -29,6 +29,8 @@ hi_sam_path = os.path.join(os.path.dirname(__file__), "letter_segmentation", "Hi
 if hi_sam_path not in sys.path:
     sys.path.insert(0, hi_sam_path)
 from demo_hisam import save_binary_mask
+
+from PIL.Image import DecompressionBombError
 
 def setup_argparse() -> argparse.ArgumentParser:
     """Set up command line argument parsing."""
@@ -392,4 +394,4 @@ def main():
     logging.info(f"Pipeline completed. Results saved to {output_path}")
 
 if __name__ == "__main__":
-    main() 
+    main()

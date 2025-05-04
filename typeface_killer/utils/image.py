@@ -3,9 +3,27 @@ Image utility functions.
 """
 
 from typing import Dict, List, Optional, Tuple, Union
+import logging
 
 import cv2
 import numpy as np
+
+def resize_if_large(image: np.ndarray, max_pixels: int = 178956970) -> np.ndarray:
+    """Resize image if it exceeds the maximum number of pixels."""
+    height, width = image.shape[:2]
+    num_pixels = height * width
+    
+    if num_pixels > max_pixels:
+        # Calculate scaling factor to fit within max_pixels
+        scale = np.sqrt(max_pixels / num_pixels)
+        new_height = int(height * scale)
+        new_width = int(width * scale)
+        
+        # Resize image
+        resized = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        logging.info(f"Resized image from {width}x{height} to {new_width}x{new_height}")
+        return resized
+    return image
 
 def filter_by_size(
     images: List[np.ndarray],
@@ -54,4 +72,4 @@ def filter_by_size(
     
     if return_indices:
         return kept_images, kept_indices
-    return kept_images 
+    return kept_images

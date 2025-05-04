@@ -10,6 +10,9 @@ import cv2
 import easyocr
 import numpy as np
 from PIL import Image
+from PIL.Image import DecompressionBombError
+
+from typeface_killer.utils.image import resize_if_large
 
 class WordDetector:
     """
@@ -62,11 +65,26 @@ class WordDetector:
             self.logger.error(f"Could not read image: {image_path}")
             raise ValueError(f"Could not read image: {image_path}")
         
-        # Detect words with configured parameters
-        results = self.reader.readtext(
-            image_path,
-            **self.ocr_params
-        )
+        # Resize image if needed to avoid DecompressionBombError
+        image = resize_if_large(image)
+        
+        try:
+            # Save resized image temporarily for EasyOCR
+            temp_path = str(Path(image_path).with_name(f"temp_{Path(image_path).name}"))
+            cv2.imwrite(temp_path, image)
+            
+            # Detect words with configured parameters
+            results = self.reader.readtext(
+                temp_path,
+                **self.ocr_params
+            )
+            
+            # Clean up temporary file
+            Path(temp_path).unlink()
+            
+        except Exception as e:
+            self.logger.error(f"Error during word detection: {str(e)}")
+            raise
         
         detected_words = []
         low_confidence_count = 0
@@ -98,4 +116,4 @@ class WordDetector:
         if len(detected_words) == 0:
             self.logger.warning(f"No words detected in {image_path}")
         
-        return detected_words 
+        return detected_words
