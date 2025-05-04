@@ -25,16 +25,16 @@ cd typeface-killer
 
 We used [SAM-TS-H trained with TextSeg](https://onedrive.live.com/?redeem=aHR0cHM6Ly8xZHJ2Lm1zL3UvcyFBaW1CZ1lWN0pqVGxnY28xejlzZFVpMXZYQ3NLZ0E%5FZT1VM1dQSnk&cid=E534267B85818129&id=E534267B85818129%2125909&parId=E534267B85818129%2125901&o=OneUp), and the corresponding [ViT-H SAM model](https://github.com/facebookresearch/segment-anything?tab=readme-ov-file#model-checkpoints). Other options are available in the [Hi-SAM repo](https://github.com/ymy-k/Hi-SAM?tab=readme-ov-file), following steps reproduce our set-up:
 
-    1. Clone the Hi-SAM repository into the correct directory:
+  1. Clone the Hi-SAM repository into the correct directory:
     ```bash
     git clone https://github.com/ymy-k/Hi-SAM.git typeface_killer/letter_segmentation/Hi-SAM
     ```
-    2. Create `pretrained_checkpoint` directory and add  ViT-H SAM model. 
+  2. Create `pretrained_checkpoint` directory and add  ViT-H SAM model. 
     ```bash
     mkdir -p pretrained_checkpoint
     wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth -O pretrained_checkpoint/sam_vit_h_4b8939.pth
     ```
-    3. Download [SAM-TS-H trained with TextSeg](https://onedrive.live.com/?redeem=aHR0cHM6Ly8xZHJ2Lm1zL3UvcyFBaW1CZ1lWN0pqVGxnY28xejlzZFVpMXZYQ3NLZ0E%5FZT1VM1dQSnk&cid=E534267B85818129&id=E534267B85818129%2125909&parId=E534267B85818129%2125901&o=OneUp) and put it into the `pretrained_checkpoint` directory.
+  3. Download [SAM-TS-H trained with TextSeg](https://onedrive.live.com/?redeem=aHR0cHM6Ly8xZHJ2Lm1zL3UvcyFBaW1CZ1lWN0pqVGxnY28xejlzZFVpMXZYQ3NLZ0E%5FZT1VM1dQSnk&cid=E534267B85818129&id=E534267B85818129%2125909&parId=E534267B85818129%2125901&o=OneUp) and put it into the `pretrained_checkpoint` directory.
 
 **3. Install dependencies:**
 ```bash
