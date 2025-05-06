@@ -151,7 +151,6 @@ The pipeline processes images in the following steps:
    - Feature Extraction
  
  <div align="center">
- **Feature Extraction Table**
    
    | Feature     | Description                                                                 |
    |-------------|-----------------------------------------------------------------------------|
