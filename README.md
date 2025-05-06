@@ -149,6 +149,9 @@ The pipeline processes images in the following steps:
    - Normalization: SVG paths are resampled, direction-corrected, aligned to origin, and scaled to height = 1.
    - Medial Axis Calculation: Each glyph is rasterized and processed into a skeleton graph (based on pixel connectivity).
    - Feature Extraction
+ 
+ <div align="center">
+ **Feature Extraction Table**
    
    | Feature     | Description                                                                 |
    |-------------|-----------------------------------------------------------------------------|
@@ -157,6 +160,7 @@ The pipeline processes images in the following steps:
    | `slant`     | Inclination angle (in degrees) of the glyph’s central vertical spine       |
    | `serif`     | *(TBD)* serif detection based on medial-end morphology                 |
    
+</div>
 
 ## Usage
 
