@@ -7,8 +7,8 @@ A Python-based pipeline for extracting typographic features from images. The pip
 2. Letter Detection: Identifies individual letters within words using EasyOCR and Tesseract
 3. Letter Segmentation: Uses Hi-SAM (Hierarchical Segment Anything Model) to segment lettershapes
 4. Vectorization: Converts letter images into vector graphics using Potrace
-5. Feature Extraction *(TBD)*: Extracts typographic features from the vectorized letters:
-    - Serifs (boolean)
+5. Feature Extraction: Extracts typographic features from the vectorized letters:
+    - Serifs (boolean) *(TBD)*
     - Slant (float)
     - Contrast (float)
     - Weight (float)
@@ -144,10 +144,45 @@ The pipeline processes images in the following steps:
    - Converts letter masks to SVG using Potrace
    - Saves SVG files to `output/vectors/` with format: `filename_<word_id>_<letter_id>.svg`
    - Updates the dataset with letter information
+   
+**5. Feature Extraction**:
+   - Normalization: SVG paths are resampled, direction-corrected, aligned to origin, and scaled to height = 1.
+   - Medial Axis Calculation: Each glyph is rasterized and processed into a skeleton graph (based on pixel connectivity).
+   - Feature Extraction
+   | Feature     | Description                                                                 |
+   |-------------|-----------------------------------------------------------------------------|
+   | `proportion`| Aspect ratio of the glyph's bounding box (height / width)                  |
+   | `weight`    | Estimated average stroke thickness, derived from the medial axis           |
+   | `slant`     | Inclination angle (in degrees) of the glyph’s central vertical spine       |
+   | `serif`     | *(TBD)* serif detection based on medial-end morphology                 |
+   
 
 ## Usage
 
 Run the pipeline with:
 ```bash
 python -m typeface_killer.main --dataset=input/dataset.json --output output 
+```
+
+Run the Feature Extractor
+```bash
+python feature_extractor/font_feature_extractor.py path/to/your.json
+```
+Output will be saved alongside the original input JSON as:
+```bash
+your_input_with_features.json
+```
+
+## Citation & Acknowledgements
+
+This work draws on typographic geometry analysis principles described by Auke Roorda. If you use this code or methodology in your research, please consider citing the following:
+
+```bash
+@phdthesis{roorda_geometric_2024,
+  author       = {Auke Roorda},
+  title        = {Geometric Analysis of Typefaces},
+  school       = {Delft University of Technology},
+  year         = {2024},
+  type         = {PhD Dissertation}
+}
 ```
