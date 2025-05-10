@@ -30,7 +30,7 @@ class LetterDetector:
         # Initialize EasyOCR reader
         self.reader = easyocr.Reader(
             lang_list=config["word_detection"]["languages"],
-            gpu=True  # Use GPU if available
+            gpu=config["letter_detection"]["easyocr"]["gpu"]
         )
         
         # Tesseract configuration
@@ -41,6 +41,10 @@ class LetterDetector:
         self.large_region_threshold = tesseract_config["large_region_threshold"]
         self.small_region_padding = tesseract_config["small_region_padding"]
         self.large_region_padding = tesseract_config["large_region_padding"]
+        
+        # Store LSTM parameters
+        self.lstm_params = config["letter_detection"]["tesseract"]["lstm_params"]
+        self.ril_level = getattr(RIL, config["letter_detection"]["tesseract"]["ril_level"].upper())
         
         # EasyOCR configuration
         easyocr_config = config["letter_detection"]["easyocr"]
@@ -70,12 +74,11 @@ class LetterDetector:
                 lang=self.languages
             ) as api:
                 api.SetImage(pil_img)
-                api.SetVariable("lstm_use_matrix", "0")
+                for param, value in self.lstm_params.items():
+                    api.SetVariable(param, value)
                 api.SetVariable("tessedit_char_whitelist", self.allowed_letters)
-                api.SetVariable("classify_bln_numeric_mode", "0")
-                api.SetVariable("segment_nonalphabetic_script", "0")
                 
-                boxes = api.GetComponentImages(RIL.SYMBOL, True, True)
+                boxes = api.GetComponentImages(self.ril_level, True, True)
                 self.logger.info(f"Tesseract found {len(boxes)} potential regions")
                 
                 for i, (_, box, _, _) in enumerate(boxes):
@@ -195,4 +198,4 @@ class LetterDetector:
         letters = self._identify_letters(regions)
         self.logger.info(f"Identified {len(letters)} letters")
         
-        return letters 
+        return letters

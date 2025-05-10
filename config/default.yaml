@@ -30,12 +30,17 @@ letter_detection:
     large_region_threshold: 4900  # 70^2
     small_region_padding: 3
     large_region_padding: 6
-  
+    lstm_params:
+      lstm_use_matrix: "0"
+      classify_bln_numeric_mode: "0" 
+      segment_nonalphabetic_script: "0"
+    ril_level: "symbol"  # Options: symbol, word, line, block
   # EasyOCR settings for letter identification
   easyocr:
     min_confidence: 0.5
     decoder: "beamsearch"
     allowlist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿœŒÄäÖöÜüßÀàÂâÆæÇçÉéÈèÊêËëÎîÏïÔôŒœÙùÛûÜüŸÿ"
+    gpu: true  # Enable/disable GPU usage
 
 # Letter Segmentation Settings
 letter_segmentation:
@@ -58,4 +63,4 @@ vectorization:
 output:
   save_intermediate: true
   save_visualizations: true
-  format: "json"  # or "csv" 
+  format: "json"  # or "csv"
