@@ -399,8 +399,11 @@ def vectorize_all_letters(all_letters: Dict[str, List[Dict]], output_dir: Path, 
         except Exception as e:
             logging.error(f"Failed to load segmented word image {word_path}: {str(e)}")
             continue
+
+        # Extract word index from filename (assuming format name_XXXX.ext)
+        word_idx = int(word_filename.split('_')[-1].split('.')[0])
         
-        for idx, letter in enumerate(letters):
+        for letter_idx, letter in enumerate(letters):
             try:
                 # Get bbox and validate
                 bbox = letter["bbox"]
@@ -428,8 +431,8 @@ def vectorize_all_letters(all_letters: Dict[str, List[Dict]], output_dir: Path, 
                     logging.warning(f"Empty crop for letter: {letter['char']}")
                     continue
                     
-                # Generate output filename using original image name
-                output_filename = f"{original_name}_{idx:04d}.svg"
+                # Generate output filename using original image name, word index, and letter index
+                output_filename = f"{original_name}_{word_idx:04d}_{letter_idx:04d}.svg"
                 
                 # Vectorize letter
                 svg_path = vectorizer.vectorize_letter(letter_image, output_filename)
