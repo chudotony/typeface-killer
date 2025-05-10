@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import cv2
 import numpy as np
@@ -31,6 +31,140 @@ if hi_sam_path not in sys.path:
 from demo_hisam import save_binary_mask
 
 from PIL.Image import DecompressionBombError
+from enum import Enum
+
+class PipelineModule(Enum):
+    WORD_DETECTION = "word_detection"
+    LETTER_DETECTION = "letter_detection"
+    LETTER_SEGMENTATION = "letter_segmentation"
+    VECTORIZATION = "vectorization"
+    ALL = "all"
+
+class ModularPipeline:
+    def __init__(self, dataset_path: str, output_dir: str, config: Dict):
+        self.dataset_path = Path(dataset_path)
+        self.output_dir = Path(output_dir)
+        self.config = config
+        self.dataset = self._load_dataset()
+        
+    def _load_dataset(self) -> Dict:
+        with open(self.dataset_path, 'r') as f:
+            return json.load(f)
+            
+    def _load_intermediate_results(self, module: PipelineModule) -> Optional[Dict]:
+        """Load results from previous module execution."""
+        result_path = self.output_dir / f"{module.value}_results.json"
+        if result_path.exists():
+            with open(result_path, 'r') as f:
+                return json.load(f)
+        return None
+        
+    def _save_intermediate_results(self, results: Dict, module: PipelineModule):
+        """Save module results for future use."""
+        result_path = self.output_dir / f"{module.value}_results.json"
+        with open(result_path, 'w') as f:
+            json.dump(results, f, indent=2)
+
+    def _save_dataset_state(self, module: PipelineModule):
+        """Save current state of dataset after module completion."""
+        dataset_path = self.output_dir / f"dataset_{module.value}.json"
+        with open(dataset_path, 'w') as f:
+            json.dump(self.dataset, f, indent=2)
+        logging.info(f"Saved dataset state after {module.value} to {dataset_path}")
+            
+    def validate_module_dependencies(self, module: PipelineModule) -> bool:
+        """Check if required previous module results exist."""
+        dependencies = {
+            PipelineModule.LETTER_DETECTION: [PipelineModule.WORD_DETECTION],
+            PipelineModule.LETTER_SEGMENTATION: [PipelineModule.LETTER_DETECTION],
+            PipelineModule.VECTORIZATION: [PipelineModule.LETTER_SEGMENTATION]
+        }
+        
+        if module in dependencies:
+            for dep in dependencies[module]:
+                if not (self.output_dir / f"{dep.value}_results.json").exists():
+                    logging.error(f"Missing required results from {dep.value}")
+                    return False
+        return True
+        
+    def run_module(self, module: PipelineModule) -> Dict:
+        """Run a specific pipeline module."""
+        if module != PipelineModule.WORD_DETECTION and not self.validate_module_dependencies(module):
+            raise ValueError(f"Cannot run {module.value}: missing dependencies")
+            
+        input_dir = Path("input/images")
+        image_paths = [str(input_dir / filename) for filename in self.dataset.keys()]
+        
+        results = None
+        if module == PipelineModule.WORD_DETECTION:
+            results = detect_words_for_all_images(image_paths, self.config, str(self.output_dir))
+            # Update dataset with word information
+            for image_path, words in results.items():
+                image_name = next((k for k in self.dataset.keys() if Path(image_path).name == k), None)
+                if image_name:
+                    self.dataset[image_name]["words"] = words
+            
+        elif module == PipelineModule.LETTER_DETECTION:
+            words = self._load_intermediate_results(PipelineModule.WORD_DETECTION)
+            results = detect_letters_for_all_words(words, self.config, str(self.output_dir))
+            # Update dataset with letter detection results
+            for image_path, letters in results.items():
+                image_name = next((k for k in self.dataset.keys() if Path(image_path).name == k), None)
+                if image_name:
+                    self.dataset[image_name]["detected_letters"] = letters
+            
+        elif module == PipelineModule.LETTER_SEGMENTATION:
+            letters = self._load_intermediate_results(PipelineModule.LETTER_DETECTION)
+            results = segment_letters_for_all_images(letters, self.config, str(self.output_dir))
+            # Update dataset with segmentation results
+            for image_path, letters in results.items():
+                image_name = next((k for k in self.dataset.keys() if Path(image_path).name == k), None)
+                if image_name:
+                    self.dataset[image_name]["segmented_letters"] = letters
+            
+        elif module == PipelineModule.VECTORIZATION:
+            letters = self._load_intermediate_results(PipelineModule.LETTER_SEGMENTATION)
+            results = vectorize_all_letters(letters, self.output_dir, self.config)
+            # Update dataset with vectorization results (already handled in _update_dataset_with_vectors)
+            self._update_dataset_with_vectors(results)
+            
+        else:
+            raise ValueError(f"Unknown module: {module}")
+            
+        # Save both intermediate results and dataset state
+        self._save_intermediate_results(results, module)
+        self._save_dataset_state(module)
+        
+        return results
+        
+    def run(self, module: PipelineModule = PipelineModule.ALL) -> Dict:
+        """Run the pipeline in modular fashion."""
+        if module == PipelineModule.ALL:
+            modules = [m for m in PipelineModule if m != PipelineModule.ALL]
+        else:
+            modules = [module]
+            
+        results = None
+        for mod in modules:
+            logging.info(f"Running module: {mod.value}")
+            results = self.run_module(mod)
+            
+        # Update dataset with final results if vectorization was run
+        if modules[-1] == PipelineModule.VECTORIZATION:
+            self._update_dataset_with_vectors(results)
+            
+        return self.dataset
+        
+    def _update_dataset_with_vectors(self, vectorized_letters: Dict):
+        """Update dataset with vectorization results."""
+        for image_path, letters in vectorized_letters.items():
+            base_name = Path(image_path).stem
+            matching_key = next((key for key in self.dataset.keys() if key.startswith(base_name)), None)
+            if matching_key:
+                self.dataset[matching_key]["letters"] = letters
+                logging.info(f"Added {len(letters)} letters to {matching_key}")
+            else:
+                logging.warning(f"No matching image found in dataset for {base_name}")
 
 def setup_argparse() -> argparse.ArgumentParser:
     """Set up command line argument parsing."""
@@ -38,6 +172,13 @@ def setup_argparse() -> argparse.ArgumentParser:
     parser.add_argument("--dataset", type=str, required=True, help="Path to dataset JSON file")
     parser.add_argument("--output", type=str, required=True, help="Path to output directory")
     parser.add_argument("--config", type=str, default="config/default.yaml", help="Path to config file")
+    parser.add_argument(
+        "--module",
+        type=str,
+        choices=[m.value for m in PipelineModule],
+        default="all",
+        help="Pipeline module to run"
+    )
     return parser
 
 def detect_words_for_all_images(image_paths: List[str], config: Dict, output_dir: str) -> Dict[str, List[Dict]]:
@@ -221,21 +362,28 @@ def vectorize_all_letters(all_letters: Dict[str, List[Dict]], output_dir: Path, 
     vectorizer = Vectorizer(output_dir=vectors_dir, config=config)
     vectorized_letters = {}
     
-    # Group letters by their word path
+    # Group letters by their word path and original image path
     word_letters = {}
+    original_paths = {}  # Track original image path for each word
     for image_path, letters in all_letters.items():
         for letter in letters:
             if "word_path" in letter:
                 word_filename = Path(letter["word_path"]).name
                 if word_filename not in word_letters:
                     word_letters[word_filename] = []
+                    # Store the original image path for this word
+                    original_paths[word_filename] = image_path
                 word_letters[word_filename].append(letter)
-    
+
     # Process each word's letters
     for word_filename, letters in word_letters.items():
         if not letters:
             logging.warning(f"No letters found for word {word_filename}")
             continue
+
+        # Get the original image path for this word
+        original_image_path = original_paths[word_filename]
+        original_name = Path(original_image_path).stem
             
         logging.info(f"Processing {len(letters)} letters from word {word_filename}")
         image_letters = []
@@ -280,9 +428,8 @@ def vectorize_all_letters(all_letters: Dict[str, List[Dict]], output_dir: Path, 
                     logging.warning(f"Empty crop for letter: {letter['char']}")
                     continue
                     
-                # Generate output filename
-                image_name = Path(letter["word_path"]).stem
-                output_filename = f"{image_name}_{idx:04d}.svg"
+                # Generate output filename using original image name
+                output_filename = f"{original_name}_{idx:04d}.svg"
                 
                 # Vectorize letter
                 svg_path = vectorizer.vectorize_letter(letter_image, output_filename)
@@ -305,8 +452,6 @@ def vectorize_all_letters(all_letters: Dict[str, List[Dict]], output_dir: Path, 
                 
         if image_letters:
             # Store letters under their original image path
-            image_path = Path(letters[0].get("word_path", "")).name
-            original_image_path = Path(image_path).stem[:-5] + Path(image_path).suffix
             if original_image_path not in vectorized_letters:
                 vectorized_letters[original_image_path] = []
             vectorized_letters[original_image_path].extend(image_letters)
@@ -375,18 +520,16 @@ def process_dataset(dataset_path: str, output_dir: str, config: Dict) -> Dict:
 
 def main():
     """Main entry point of the pipeline."""
-    # Setup
     parser = setup_argparse()
     args = parser.parse_args()
     setup_logging()
     
-    # Load configuration
     config = load_config(args.config)
     
-    # Process dataset
-    results = process_dataset(args.dataset, args.output, config)
+    pipeline = ModularPipeline(args.dataset, args.output, config)
+    results = pipeline.run(PipelineModule(args.module))
     
-    # Save results
+    # Save final results
     output_path = Path(args.output) / "dataset.json"
     with open(output_path, "w") as f:
         json.dump(results, f, indent=2)
