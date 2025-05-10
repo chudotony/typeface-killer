@@ -437,10 +437,10 @@ def vectorize_all_letters(all_letters: Dict[str, List[Dict]], output_dir: Path, 
                 # Vectorize letter
                 svg_path = vectorizer.vectorize_letter(letter_image, output_filename)
                 if svg_path is None:
-                    logging.warning(f"Failed to vectorize letter: {letter['char']}")
+                    logging.warning(f"Skipping letter '{letter['char']}' due to empty or invalid vectorization")
                     continue
                     
-                # Add vectorized letter to results
+                # Add vectorized letter to results only if vectorization was successful
                 vectorized_letter = {
                     "char": letter["char"],
                     "bbox": {"x": x, "y": y, "w": w, "h": h},
@@ -453,12 +453,13 @@ def vectorize_all_letters(all_letters: Dict[str, List[Dict]], output_dir: Path, 
                 logging.error(f"Error processing letter: {str(e)}")
                 continue
                 
+        # Only add letters to results if there are valid vectorized letters
         if image_letters:
-            # Store letters under their original image path
             if original_image_path not in vectorized_letters:
                 vectorized_letters[original_image_path] = []
             vectorized_letters[original_image_path].extend(image_letters)
             logging.info(f"Vectorized {len(image_letters)} letters for word {word_filename}")
+            
     return vectorized_letters
 
 def process_dataset(dataset_path: str, output_dir: str, config: Dict) -> Dict:
@@ -514,8 +515,18 @@ def process_dataset(dataset_path: str, output_dir: str, config: Dict) -> Dict:
         if matching_key:
             image_name = matching_key
             logging.info(f"Processing image: {image_name}")
-            dataset[image_name]["letters"] = letters
-            logging.info(f"Added {len(letters)} letters to {image_name}")
+            
+            # Filter out any letters that don't have an SVG file
+            valid_letters = []
+            for letter in letters:
+                svg_path = Path(output_path) / "vectors" / letter["svg_path"]
+                if svg_path.exists():
+                    valid_letters.append(letter)
+                else:
+                    logging.warning(f"Skipping letter '{letter['char']}' - SVG file not found: {svg_path}")
+            
+            dataset[image_name]["letters"] = valid_letters
+            logging.info(f"Added {len(valid_letters)} valid letters to {image_name}")
         else:
             logging.warning(f"No matching image found in dataset for {base_name}")
     

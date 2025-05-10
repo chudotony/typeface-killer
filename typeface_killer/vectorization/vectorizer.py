@@ -30,7 +30,7 @@ class Vectorizer:
         # Set default config values
         self.config = config or {}
         self.opttolerance = self.config.get("vectorization", {}).get("opttolerance", 0.05)
-        self.border_threshold = self.config.get("vectorization", {}).get("border_threshold", 0.3)
+        self.border_threshold = self.config.get("vectorization", {}).get("border_threshold", 0.5)
     
     def _touches_border(self, curve, width: int, height: int) -> bool:
         """
@@ -141,42 +141,94 @@ class Vectorizer:
             # Image dimensions
             height, width = crop.shape
             
+            # Debug: log initial number of curves
+            logging.debug(f"Initial curves for {output_filename}: {len(path.curves)}")
+            
             # Filter the contours
             filtered_curves = []
-            for curve in path:
-                # Check if curve touches the border
+            for curve in path.curves:
                 if self._touches_border(curve, width, height):
-                    # Check dimensions relative to image size
                     contour_width, contour_height = self._get_contour_dimensions(curve)
-                    
-                    # Keep only if larger than threshold percentage of image dimensions
                     if (contour_width > self.border_threshold * width and 
                         contour_height > self.border_threshold * height):
                         filtered_curves.append(curve)
                 else:
-                    # Keep all contours that don't touch the border
                     filtered_curves.append(curve)
             
-            # Generate SVG path
-            svg_path = str(self.output_dir / output_filename)
+            # Debug: log number of filtered curves
+            logging.debug(f"Filtered curves for {output_filename}: {len(filtered_curves)}")
             
-            # Write SVG file
+            if not filtered_curves:
+                logging.warning(f"No valid strokes found for {output_filename}")
+                return None
+            
+            # Build path data first to validate it
+            path_data = ""
+            stroke_count = 0
+            
+            for curve in filtered_curves:
+                if not hasattr(curve, 'start_point') or not hasattr(curve, 'segments'):
+                    logging.warning(f"Invalid curve object in {output_filename}")
+                    continue
+                    
+                curve_data = ""
+                # Validate start point coordinates
+                if any(not isinstance(coord, (int, float)) for coord in [curve.start_point.x, curve.start_point.y]):
+                    logging.warning(f"Invalid start point coordinates in {output_filename}")
+                    continue
+                    
+                curve_data += 'M {:.1f},{:.1f}'.format(curve.start_point.x, curve.start_point.y)
+                
+                has_segments = False
+                has_valid_points = True
+                
+                for segment in curve:
+                    # Validate segment coordinates
+                    if segment.is_corner:
+                        if not all(hasattr(segment, attr) for attr in ['c', 'end_point']):
+                            has_valid_points = False
+                            break
+                        if any(not isinstance(getattr(point, coord), (int, float)) 
+                              for point in [segment.c, segment.end_point] 
+                              for coord in ['x', 'y']):
+                            has_valid_points = False
+                            break
+                        curve_data += f' L {segment.c.x:.1f},{segment.c.y:.1f}'
+                        curve_data += f' L {segment.end_point.x:.1f},{segment.end_point.y:.1f}'
+                    else:
+                        if not all(hasattr(segment, attr) for attr in ['c1', 'c2', 'end_point']):
+                            has_valid_points = False
+                            break
+                        if any(not isinstance(getattr(point, coord), (int, float)) 
+                              for point in [segment.c1, segment.c2, segment.end_point] 
+                              for coord in ['x', 'y']):
+                            has_valid_points = False
+                            break
+                        curve_data += f' C {segment.c1.x:.1f},{segment.c1.y:.1f}'
+                        curve_data += f' {segment.c2.x:.1f},{segment.c2.y:.1f}'
+                        curve_data += f' {segment.end_point.x:.1f},{segment.end_point.y:.1f}'
+                    has_segments = True
+                
+                # Only add curve if it has valid segments and points
+                if has_segments and has_valid_points:
+                    curve_data += ' Z'
+                    path_data += curve_data
+                    stroke_count += 1
+                    logging.debug(f"Added valid stroke {stroke_count} to {output_filename}")
+            
+            # Final validation before writing file
+            if stroke_count == 0 or not path_data.strip():
+                logging.warning(f"No valid path data for {output_filename}")
+                return None
+            
+            # Generate SVG path and write file
+            svg_path = str(self.output_dir / output_filename)
             with open(svg_path, "w") as f:
                 f.write(f'<svg viewBox="0 0 {width} {height}">')
-                f.write('<path d="')
-                
-                for curve in filtered_curves:
-                    f.write('M {},{}'.format(curve.start_point.x, curve.start_point.y))
-                    for segment in curve:
-                        if segment.is_corner:
-                            f.write(f' L {segment.c.x},{segment.c.y} L {segment.end_point.x},{segment.end_point.y}')
-                        else:
-                            f.write(f' C {segment.c1.x},{segment.c1.y} {segment.c2.x},{segment.c2.y} {segment.end_point.x},{segment.end_point.y}')
-                    f.write(' Z ')
-                
-                f.write('" fill-rule="evenodd" />')
+                f.write(f'<path d="{path_data}" fill-rule="evenodd" />')
                 f.write("</svg>")
             
+            logging.info(f"Successfully created SVG with {stroke_count} strokes: {output_filename}")
             return svg_path
             
         except Exception as e:
