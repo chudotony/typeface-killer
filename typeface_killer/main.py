@@ -527,6 +527,12 @@ def process_dataset(dataset_path: str, output_dir: str, config: Dict) -> Dict:
             
             dataset[image_name]["letters"] = valid_letters
             logging.info(f"Added {len(valid_letters)} valid letters to {image_name}")
+            
+            # Clean up intermediate fields
+            keys_to_remove = ["words", "detected_letters", "segmented_letters"]
+            for key in keys_to_remove:
+                if key in dataset[image_name]:
+                    del dataset[image_name][key]
         else:
             logging.warning(f"No matching image found in dataset for {base_name}")
     
