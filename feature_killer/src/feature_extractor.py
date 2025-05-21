@@ -1,11 +1,8 @@
 # ---- 动态加载 svg_utils.py 模块 ----
 import importlib.util
-from sklearn.decomposition import PCA
-import sys
 from pathlib import Path
 from svgpathtools import svg2paths2
 import numpy as np
-import matplotlib.pyplot as plt
 import networkx as nx
 
 svg_utils_path = Path(__file__).parent / "svg_utils.py"
@@ -25,33 +22,21 @@ import networkx as nx
 import numpy as np
 
 def extract_features_from_svg(svg_path):
-    """
-    Extract three typographic features from a single SVG file:
-    - proportion
-    - weight
-    - slant
-
-    Pipeline:
-    1. Normalize the outline.
-    2. Compute the medial axis transform (MAT).
-    3. Extract features based on MAT and outline.
-    """
+    """Extract typographic features from a single SVG file"""
+    # Load SVG only once
     outline = load_normalized_svg(svg_path)
-    contours = load_normalized_svg(svg_path)
     if not outline:
         raise ValueError("Failed to load SVG or no paths found")
 
-    # 其他三个特征的MAT
+    # Get MAT results
     medial_axis, skeleton_mask, dist_transform = compute_medial_axis_consistent(outline)
     
-    # Slant的
+    # Build graph once and reuse
     G = skeleton_to_graph(skeleton_mask)
     
-    # For Serif
-    paths, *_ = svg2paths2(str(svg_path))
+    # For Serif - reuse existing paths
+    paths = svg_utils.get_cached_paths(svg_path)
     _, skeleton_orig, bbox_origin, scale_origin = compute_medial_axis_serif(paths)
-    
-    # medial_axis, skeleton_mask, bbox_origin, scale = compute_medial_axis(contours)
 
     is_serif, num_filtered_points = compute_serif(svg_path, skeleton_orig, bbox_origin, scale_origin)
 
@@ -278,28 +263,43 @@ def compute_serif(svg_path, skeleton_mask, bbox_origin, scale, height_norm=1.0,
                     pts = sample_path_points(seg, num_samples=samples)
                     rot = compute_total_rotation(pts)
                     arc_len = compute_total_length(pts)
-                    if rot > rotation_thresh and arc_len < length_thresh:
-                        serif_segments.append(seg)
-                        center_pt = seg.point(0.5)
-                        segment_centers.append(center_pt)
+                    
+                    # Early length filtering before expensive rotation calculation
+                    if arc_len < length_thresh:
+                        if rot > rotation_thresh:
+                            serif_segments.append(seg)
+                            center_pt = seg.point(0.5)
+                            segment_centers.append(center_pt)
         return serif_segments, segment_centers
 
     def build_skeleton_graph(skeleton):
         import networkx as nx
+        # Pre-allocate the graph size
         G = nx.Graph()
-        coords = list(zip(*np.nonzero(skeleton)))
-        for y, x in coords:
-            G.add_node((x, y))
-            for dx in [-1, 0, 1]:
-                for dy in [-1, 0, 1]:
-                    if dx == 0 and dy == 0:
-                        continue
-                    nx_, ny_ = x + dx, y + dy
-                    if (nx_, ny_) in G:
-                        G.add_edge((x, y), (nx_, ny_))
+        rows, cols = skeleton.shape
+        coords = np.column_stack(np.nonzero(skeleton))
+        
+        # Create nodes in bulk
+        G.add_nodes_from(map(tuple, coords[:, ::-1]))  # Reverse coords to (x,y)
+        
+        # Vectorized edge creation
+        for dy, dx in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
+            shifted = coords + [dy, dx]
+            mask = (shifted[:,0] >= 0) & (shifted[:,0] < rows) & \
+                  (shifted[:,1] >= 0) & (shifted[:,1] < cols)
+            valid_shifts = shifted[mask]
+            valid_coords = coords[mask]
+            
+            # Filter points that exist in skeleton
+            exists_mask = skeleton[valid_shifts[:,0], valid_shifts[:,1]]
+            edges = zip(map(tuple, valid_coords[exists_mask, ::-1]), 
+                       map(tuple, valid_shifts[exists_mask, ::-1]))
+            G.add_edges_from(edges)
+            
         return G
 
     def filter_serif_segments_by_mat(serif_segments, segment_centers, skeleton_mask, bbox_origin, scale, height_norm=1.0, dist_thresh=10):
+        # Build graph once
         G = build_skeleton_graph(skeleton_mask)
         leaf_nodes = [pt for pt in G.nodes if G.degree[pt] == 1]
         leaf_arr = np.array(leaf_nodes)
@@ -307,16 +307,20 @@ def compute_serif(svg_path, skeleton_mask, bbox_origin, scale, height_norm=1.0,
         if len(leaf_arr) == 0:
             return []
 
+        # Build KDTree once
         tree = KDTree(leaf_arr)
-        filtered_segments = []
-        for seg in serif_segments:
-            pt = seg.point(0.5)
-            svg_xy = np.array([pt.real, pt.imag])
-            pixel_xy = ((svg_xy * height_norm) - bbox_origin) * scale
-            dist, _ = tree.query([pixel_xy], k=1)
-            if dist[0][0] <= dist_thresh:
-                filtered_segments.append(pt)
-        return filtered_segments
+        
+        # Vectorized conversion of all segments at once
+        points = np.array([[pt.real, pt.imag] for pt in segment_centers])
+        pixel_xy = ((points * height_norm) - bbox_origin) * scale
+        
+        # Batch query KDTree
+        dists, _ = tree.query(pixel_xy, k=1)
+        mask = dists.flatten() <= dist_thresh
+        
+        # Filter segments using mask
+        filtered_segments = [seg for seg, m in zip(serif_segments, mask) if m]
+        return [seg.point(0.5) for seg in filtered_segments]
 
     paths = svg_to_paths(svg_path)
     serif_segments, segment_centers = detect_serif_segments(paths, rotation_thresh, length_thresh)

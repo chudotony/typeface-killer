@@ -1,75 +1,55 @@
 from pathlib import Path
 import json
 from feature_extractor import extract_features_from_svg
-#
-#def process_json_file(json_path, vector_dir="data/test_vectors"):
-#    import json
-#    from pathlib import Path
-#
-#    with open(json_path, 'r', encoding='utf-8') as f:
-#        data = json.load(f)
-#
-#    #base_dir = Path("data/test_vectors")  # <-- 明确指定 SVG 文件的真实路径（文件夹的名称）
-#    base_dir = Path(vector_dir)
-#
-#    for img_name, entry in data.items():
-#        for letter in entry.get("letters", []):
-#            svg_rel_path = letter.get("svg_path")
-#            svg_path = base_dir / svg_rel_path if svg_rel_path else None
-#
-#            if svg_path and svg_path.exists():
-#                try:
-#                    features = extract_features_from_svg(svg_path)
-#                    letter.setdefault("features", {}).update(features)
-#                    print(f"Processed: {svg_path.name}   serif = {features.get('serif')}")
-#
-#                except Exception as e:
-#                    print(f"[Error] {svg_path}: {e}")
-#
-#    # base_output_dir = Path("data/output")
-#    # output_path = base_output_dir / Path(json_path).with_name(f"{Path(json_path).stem}_with_features.json")
-#
-#    output_path = Path(json_path).with_name(f"{Path(json_path).stem}_with_features.json")
-#    with open(output_path, 'w', encoding='utf-8') as f:
-#        json.dump(data, f, indent=2)
-#    print(f"[Done] Results saved to: {output_path}")
-    
-def process_json_file(json_path, vector_dir="data/test_vectors"):
-    import json
-    from pathlib import Path
+import multiprocessing as mp
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
+def process_letter(args):
+    svg_path, base_dir = args
+    try:
+        features = extract_features_from_svg(svg_path)
+        print(f"Processed: {svg_path.name}, serif = {features.get('serif')}")
+        return svg_path, features
+    except Exception as e:
+        print(f"[Error] {svg_path}: {e}")
+        return svg_path, None
+
+def process_json_file(json_path, vector_dir="data/test_vectors"):
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
     base_dir = Path(vector_dir)
-    # output_path = Path(json_path).with_name(f"{Path(json_path).stem}_with_features.json")
     input_path = Path(json_path)
-    if input_path.stem.endswith("_with_features"):
-        output_path = input_path  # already a results file, just overwrite it
-    else:
-        output_path = input_path.with_name(f"{input_path.stem}_with_features.json")
+    output_path = input_path.with_name(f"{input_path.stem}_with_features.json") if not input_path.stem.endswith("_with_features") else input_path
 
-
+    # Collect all SVG paths to process
+    tasks = []
+    path_to_letter = {}
     for img_name, entry in data.items():
         for letter in entry.get("letters", []):
-            svg_rel_path = letter.get("svg_path")
-            svg_path = base_dir / svg_rel_path if svg_rel_path else None
-
             if "features" in letter:
                 continue
+            svg_rel_path = letter.get("svg_path")
+            if svg_rel_path:
+                svg_path = base_dir / svg_rel_path
+                if svg_path.exists():
+                    tasks.append((svg_path, base_dir))
+                    path_to_letter[str(svg_path)] = letter
 
-            if svg_path and svg_path.exists():
-                try:
-                    features = extract_features_from_svg(svg_path)
-                    letter.setdefault("features", {}).update(features)
-                    print(f"Processed: {svg_path.name}, serif = {features.get('serif')}")
-                except Exception as e:
-                    print(f"[Error] {svg_path}: {e}")
-
-                # 每处理一个就写一次
+    # Process letters in parallel
+    num_cores = max(1, mp.cpu_count() - 1)  # Leave one core free
+    with ProcessPoolExecutor(max_workers=num_cores) as executor:
+        results = executor.map(process_letter, tasks)
+        
+        # Update features and save incrementally
+        for svg_path, features in results:
+            if features and str(svg_path) in path_to_letter:
+                letter = path_to_letter[str(svg_path)]
+                letter.setdefault("features", {}).update(features)
+                # Save after each batch
                 with open(output_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2)
-                    
+
     print(f"[Done] All letters processed and saved incrementally to: {output_path}")
 
 

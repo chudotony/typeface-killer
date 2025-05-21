@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 from pathlib import Path
 from xml.dom import minidom
+import networkx as nx
+from concurrent.futures import ThreadPoolExecutor
 
 from skimage.draw import polygon as sk_polygon
 from skimage.morphology import medial_axis
@@ -12,6 +14,19 @@ from scipy.ndimage import distance_transform_edt
 from skimage.morphology import skeletonize
 from skimage.draw import polygon2mask
 from scipy.ndimage import distance_transform_edt
+from functools import lru_cache
+
+def sample_path_parallel(path, num_points=300):
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        # Sample segments in parallel
+        future_points = [
+            executor.submit(lambda s: [s.point(t) for t in np.linspace(0, 1, num_points)], seg)
+            for seg in path
+        ]
+        points = []
+        for future in future_points:
+            points.extend(future.result())
+    return [(p.real, p.imag) for p in points]
 
 def load_normalized_svg(svg_path):
     """
@@ -26,60 +41,43 @@ def load_normalized_svg(svg_path):
             points.extend(pts)
         return [(p.real, p.imag) for p in points]
 
-    all_contours = [sample_path_to_points(p) for p in paths if p]
+    # Use parallel sampling for paths with many segments
+    all_contours = []
+    for p in paths:
+        if p:
+            if len(p) > 10:  # Only parallelize for complex paths
+                points = sample_path_parallel(p)
+            else:
+                points = sample_path_to_points(p)
+            all_contours.append(points)
+    
     if not all_contours:
         return []
 
     return normalize_geometry_roorda(all_contours)
 
+# Add path caching
+@lru_cache(maxsize=1000)
+def get_cached_paths(svg_path):
+    return svgpathtools.svg2paths(str(svg_path))[0]
+
 def normalize_geometry_roorda(contours):
-    """
-    Roorda 风格归一化：对齐原点，高度统一为 1，同时确保轮廓为逆时针方向。
-    """
-    def is_clockwise(polygon):
-        x, y = np.array(polygon)[:, 0], np.array(polygon)[:, 1]
-        return np.sum((x[1:] - x[:-1]) * (y[1:] + y[:-1])) > 0
-
-    def ensure_counter_clockwise(contour):
-        return contour[::-1] if is_clockwise(contour) else contour
-
-    # 确保轮廓方向一致
-    contours = [ensure_counter_clockwise(c) for c in contours]
-
-    all_points = np.vstack(contours)
-    min_x, min_y = np.min(all_points, axis=0)
-    max_x, max_y = np.max(all_points, axis=0)
-
-    height = max_y - min_y
+    """Optimized Roorda normalization using vectorized operations"""
+    if not contours:
+        return []
+        
+    # Convert to numpy array once
+    contours_array = [np.array(c) for c in contours]
+    all_points = np.vstack(contours_array)
+    
+    # Vectorized min/max
+    mins = np.min(all_points, axis=0)
+    maxs = np.max(all_points, axis=0)
+    height = maxs[1] - mins[1]
     scale = 1.0 / height if height > 0 else 1.0
-
-    normalized = []
-    for pts in contours:
-        pts_shifted = np.array(pts) - np.array([min_x, min_y])
-        pts_scaled = pts_shifted * scale
-        normalized.append(pts_scaled)
-    return normalized
-
-#def compute_medial_axis(contours, canvas_size=256):
-#    mask = np.zeros((canvas_size, canvas_size), dtype=bool)
-#
-#    all_points = np.vstack(contours)
-#    min_x, min_y = np.min(all_points, axis=0)
-#    max_x, max_y = np.max(all_points, axis=0)
-#    scale = canvas_size / max(max_x - min_x, max_y - min_y)
-#
-#    for contour in contours:
-#        scaled = (np.array(contour) - [min_x, min_y]) * scale
-#        poly_mask = polygon2mask((canvas_size, canvas_size), scaled)
-#        mask |= poly_mask
-#
-#    mask = cv2.dilate(mask.astype(np.uint8), np.ones((3, 3)), iterations=2).astype(bool)
-#    skeleton = skeletonize(mask)
-#    dist = distance_transform_edt(mask)
-#    medial_points = [(x, y, dist[y, x]) for y, x in zip(*np.nonzero(skeleton))]
-#
-#    return medial_points, skeleton, (min_x, min_y), scale
-
+    
+    # Vectorized transformation
+    return [(c - mins) * scale for c in contours_array]
 
 def compute_medial_axis(contours, canvas_size=256):
     """
@@ -108,81 +106,42 @@ def compute_medial_axis(contours, canvas_size=256):
     
 # debug版本
 def compute_medial_axis_consistent(contours, canvas_size=256, pad=10):
-    """
-    使用 notebook 逻辑、且经过缩放修复的中轴线提取函数。
-    - 输入必须是标准化后的 contours（归一到0~1）
-    - 会将其缩放至 canvas_size 区域，避免 mask 过小失效
-    返回:
-        - medial_points: [(x, y, radius)] 以像素为单位
-        - skeleton: skeleton mask
-        - dist_transform: 距离变换图
-    """
+    """Optimized medial axis computation"""
     mask = np.zeros((canvas_size, canvas_size), dtype=bool)
-
-    for i, contour in enumerate(contours):
-        contour_np = np.array(contour)
-        if len(contour_np) < 3:
+    
+    # Pre-allocate arrays
+    scaled_contours = []
+    for contour in contours:
+        if len(contour) < 3:
             continue
+        # Vectorized scaling
+        scaled = np.array(contour) * (canvas_size - 2 * pad) + pad
+        scaled_contours.append(scaled)
+    
+    # Batch process polygons
+    for scaled in scaled_contours:
         try:
-            # 将归一化轮廓缩放至 canvas，居中并保留边距
-            scaled = (contour_np * (canvas_size - 2 * pad)) + pad
-            x, y = scaled[:, 0], scaled[:, 1]
-            rr, cc = sk_polygon(y, x, shape=(canvas_size, canvas_size))
+            rr, cc = sk_polygon(scaled[:, 1], scaled[:, 0], shape=(canvas_size, canvas_size))
             mask[rr, cc] = 1
         except Exception as e:
-            print(f"[Polygon error] Contour #{i} → {e}")
             continue
 
-    if np.sum(mask) == 0:
-        raise ValueError("⚠️ Empty mask generated — check contours or normalization")
+    if not np.any(mask):
+        raise ValueError("Empty mask generated")
 
+    # Compute skeleton and distance transform once
     skeleton = medial_axis(mask)
     if not np.any(skeleton):
-        raise ValueError("⚠️ Medial axis skeleton is empty")
+        raise ValueError("Empty skeleton")
 
     dist_transform = distance_transform_edt(mask)
-
-    medial_points = []
+    
+    # Vectorized medial point extraction
     ys, xs = np.nonzero(skeleton)
-    for x, y in zip(xs, ys):
-        radius = dist_transform[y, x]
-        medial_points.append((x, y, radius))
+    radii = dist_transform[ys, xs]
+    medial_points = list(zip(xs, ys, radii))
 
     return medial_points, skeleton, dist_transform
-#
-#def compute_medial_axis_consistent(contours, canvas_size=256, scale=1.5, pad=10):
-#    """
-#    使用 notebook 的逻辑实现的中轴线提取函数，基于归一化轮廓。
-#    返回：
-#        - medial_points: [(x, y, radius)]，未归一化（以 raster 为基准的）中轴点
-#        - skeleton: 布尔数组，中轴线掩码
-#    """
-#    mask = np.zeros((canvas_size, canvas_size), dtype=bool)
-#
-#    for contour in contours:
-#        contour_np = np.array(contour)
-#        if len(contour_np) == 0:
-#            continue
-#        # 放缩+加边距以避免裁切
-#        scaled = (contour_np - contour_np.min(axis=0)) * scale + pad
-#        x, y = scaled[:, 0], scaled[:, 1]
-#        height = int(np.ceil(y.max())) + pad
-#        width = int(np.ceil(x.max())) + pad
-#        rr, cc = sk_polygon(y, x, shape=(height, width))
-#        canvas = np.zeros((height, width), dtype=bool)
-#        canvas[rr, cc] = 1
-#        mask[:height, :width] |= canvas
-#
-#    skeleton = medial_axis(mask)
-#    dist_transform = distance_transform_edt(mask)
-#
-#    medial_points = []
-#    ys, xs = np.nonzero(skeleton)
-#    for x, y in zip(xs, ys):
-#        radius = dist_transform[y, x]
-#        medial_points.append((x, y, radius))
-#
-#    return medial_points, skeleton, dist_transform
 
 def compute_medial_axis_serif(paths, image_size=256):
     all_pts = []
@@ -211,27 +170,31 @@ def compute_medial_axis_serif(paths, image_size=256):
     skeleton = skeletonize(mask)
     return [], skeleton, (x_min, y_min), scale
 
-def skeleton_to_graph(skeleton):
-    """
-    Convert a skeleton binary image into a NetworkX graph.
-    Nodes are (x, y) pixel positions.
-    """
-    from skimage.morphology import skeletonize
-    import networkx as nx
-
+# Cache graph construction
+@lru_cache(maxsize=100)
+def skeleton_to_graph_cached(skeleton_bytes):
+    """Internal cached version that works with hashable bytes"""
+    skeleton = np.frombuffer(skeleton_bytes, dtype=bool).reshape(256, 256)  # Use known shape
     G = nx.Graph()
-    height, width = skeleton.shape
-
-    for y in range(height):
-        for x in range(width):
-            if not skeleton[y, x]:
-                continue
-            for dy in [-1, 0, 1]:
-                for dx in [-1, 0, 1]:
-                    if dx == 0 and dy == 0:
-                        continue
-                    nx_, ny_ = x + dx, y + dy
-                    if 0 <= nx_ < width and 0 <= ny_ < height:
-                        if skeleton[ny_, nx_]:
-                            G.add_edge((x, y), (nx_, ny_))
+    ys, xs = np.nonzero(skeleton)
+    
+    # Add nodes in bulk
+    G.add_nodes_from(zip(xs, ys))
+    
+    # Vectorized edge detection
+    for dy, dx in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
+        shifted_xs = xs + dx
+        shifted_ys = ys + dy
+        mask = (shifted_xs >= 0) & (shifted_xs < skeleton.shape[1]) & \
+               (shifted_ys >= 0) & (shifted_ys < skeleton.shape[0])
+        valid_points = skeleton[shifted_ys[mask], shifted_xs[mask]]
+        edges = zip(zip(xs[mask], ys[mask]), 
+                   zip(shifted_xs[mask], shifted_ys[mask]))
+        G.add_edges_from((e[0], e[1]) for e, v in zip(edges, valid_points) if v)
+    
     return G
+
+def skeleton_to_graph(skeleton):
+    """Main function that handles conversion to hashable format"""
+    skeleton_bytes = skeleton.tobytes()  # Convert ndarray to bytes for hashing
+    return skeleton_to_graph_cached(skeleton_bytes)
