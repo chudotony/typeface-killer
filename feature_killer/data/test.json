@@ -1,0 +1,183 @@
+{
+    "Revue-Suisse-De-L-Imprimerie_05_1944.jpeg": {
+      "letters": [
+        {
+          "char": "R",
+          "bbox": {
+            "x": 5,
+            "y": 27,
+            "w": 100,
+            "h": 123
+          },
+          "svg_path": "Revue-Suisse-De-L-Imprimerie_05_1944_0000_0000.svg"
+        },
+        {
+          "char": "E",
+          "bbox": {
+            "x": 124,
+            "y": 17,
+            "w": 87,
+            "h": 125
+          },
+          "svg_path": "Revue-Suisse-De-L-Imprimerie_05_1944_0000_0001.svg"
+        },
+        {
+          "char": "V",
+          "bbox": {
+            "x": 231,
+            "y": 16,
+            "w": 123,
+            "h": 126
+          },
+          "svg_path": "Revue-Suisse-De-L-Imprimerie_05_1944_0000_0002.svg"
+        },
+        {
+          "char": "U",
+          "bbox": {
+            "x": 376,
+            "y": 16,
+            "w": 121,
+            "h": 124
+          },
+          "svg_path": "Revue-Suisse-De-L-Imprimerie_05_1944_0000_0003.svg"        },
+        {
+          "char": "E",
+          "bbox": {
+            "x": 526,
+            "y": 17,
+            "w": 88,
+            "h": 124
+          },
+          "svg_path": "Revue-Suisse-De-L-Imprimerie_05_1944_0000_0004.svg"
+        },
+        {
+          "char": "S",
+          "bbox": {
+            "x": 9,
+            "y": 15,
+            "w": 77,
+            "h": 124
+          },
+          "svg_path": "Revue-Suisse-De-L-Imprimerie_05_1944_0001_0000.svg"
+        },
+        {
+          "char": "U",
+          "bbox": {
+            "x": 113,
+            "y": 18,
+            "w": 121,
+            "h": 121
+          },
+          "svg_path": "Revue-Suisse-De-L-Imprimerie_05_1944_0001_0001.svg"
+        },
+        {
+          "char": "S",
+          "bbox": {
+            "x": 330,
+            "y": 16,
+            "w": 76,
+            "h": 124
+          },
+          "svg_path": "Revue-Suisse-De-L-Imprimerie_05_1944_0001_0002.svg"
+        },
+        {
+          "char": "S",
+          "bbox": {
+            "x": 435,
+            "y": 15,
+            "w": 77,
+            "h": 124
+          },
+          "svg_path": "Revue-Suisse-De-L-Imprimerie_05_1944_0001_0003.svg"
+        },
+        {
+          "char": "E",
+          "bbox": {
+            "x": 542,
+            "y": 13,
+            "w": 86,
+            "h": 123
+          },
+          "svg_path": "Revue-Suisse-De-L-Imprimerie_05_1944_0001_0004.svg"
+        },
+        {
+          "char": "U",
+          "bbox": {
+            "x": 80,
+            "y": 8,
+            "w": 40,
+            "h": 66
+          },
+          "svg_path": "poster_192207_z_0001_0000.svg"
+        },
+        {
+          "char": "D",
+          "bbox": {
+            "x": 24,
+            "y": 4,
+            "w": 64,
+            "h": 142
+          },
+          "svg_path": "poster_111176_z_0000_0000.svg"
+        },
+        {
+          "char": "Q",
+          "bbox": {
+            "x": 152,
+            "y": 21,
+            "w": 34,
+            "h": 50
+          },
+          "svg_path": "poster_110403_z_0003_0000.svg"
+        },
+        {
+          "char": "G",
+          "bbox": {
+            "x": 135,
+            "y": 0,
+            "w": 53,
+            "h": 76
+          },
+          "svg_path": "poster_210129_z_0001_0003.svg"
+        }
+      ],
+      "source": {
+        "source_name": "Revue Suisse De L'Imprimerie",
+        "country": "Switzerland",
+        "year": "1944",
+        "designer": "",
+        "medium": "magazine cover"
+      }
+    },
+    "Revue-Suisse-De-L-Imprimerie_02_1942.jpeg": {
+    "letters": [
+        {
+          "char": "H",
+          "bbox": {
+            "x": 76,
+            "y": 12,
+            "w": 63,
+            "h": 63
+          },
+          "svg_path": "Revue-Suisse-De-L-Imprimerie_02_1942_0000_0000.svg"
+        },
+      {
+        "char": "E",
+        "bbox": {
+          "x": 658,
+          "y": 14,
+          "w": 61,
+          "h": 62
+        },
+        "svg_path": "Revue-Suisse-De-L-Imprimerie_02_1942_0000_0006.svg"
+      }
+    ],
+    "source": {
+      "source_name": "Typografische Monatsblatter",
+      "country": "Switzerland",
+      "year": "1996",
+      "designer": "",
+      "medium": "magazine cover"
+    }
+  }
+}

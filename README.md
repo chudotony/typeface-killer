@@ -157,7 +157,7 @@ The pipeline processes images in the following steps:
    | `proportion`| Aspect ratio of the glyph's bounding box (height / width)                  |
    | `weight`    | Estimated average stroke thickness, derived from the medial axis           |
    | `slant`     | Inclination angle (in degrees) of the glyph’s central vertical spine       |
-   | `serif`     | *(TBD)* serif detection based on medial-end morphology                 |
+   | `serif`     | serif detection based on medial-end morphology                 |
    
 </div>
 
@@ -168,15 +168,37 @@ Run the pipeline with:
 python -m typeface_killer.main --dataset=input/dataset.json --output output 
 ```
 
-Run the Feature Extractor
+### Run the Feature Extractor
+
+1. Navigate to `feature_extractor` folder
+
 ```bash
-python feature_extractor/font_feature_extractor.py path/to/your.json
+cd typeface-features
 ```
-Output will be saved alongside the original input JSON as:
+2. Run the Extraction Script
+```bash
+python src/font_feature_extractor.py data/test.json --vector_dir data/vectors_test
+```
+
+- `data/test.json`: Path to the input JSON file containing glyph metadata.
+- `--vector_dir data/vectors_test`: Path to the folder where your SVG vector files are stored.
+
+3. Output
+- The output will be saved in the **same directory as the input JSON**, with `_with_features` appended to the filename.
+
 ```bash
 your_input_with_features.json
 ```
+4. Auto-Save & Resume Support
 
+- The script **saves results after processing each glyph**, so you won't lose progress if interrupted.
+- If interrupted, you can **resume from where it left off**.
+
+> ✅ To resume after an interruption, **use the previously saved result file (`*_with_features.json`) as the input JSON** when re-running the script.
+
+```bash
+python src/font_feature_extractor.py data/test_with_features.json --vector_dir data/vectors_test
+```
 ## Citation & Acknowledgements
 
 This work draws on typographic geometry analysis principles described by Auke Roorda. If you use this code or methodology in your research, please consider citing the following:
