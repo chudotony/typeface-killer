@@ -170,10 +170,10 @@ python -m typeface_killer.main --dataset=input/dataset.json --output output
 
 ### Run the Feature Extractor
 
-1. Navigate to `feature_extractor` folder
+1. Navigate to `feature_killer` folder
 
 ```bash
-cd typeface-features
+cd feature_killer
 ```
 2. Run the Extraction Script
 ```bash
